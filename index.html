@@ -138,12 +138,11 @@ $("outCancel").onclick=()=>$("outSheet").classList.remove("open");
 $("addSave").onclick=()=>{const nm=$("name").value.trim()||"Untitled piece";if(editId){const it=S.items.find(x=>x.id===editId);if(it){it.name=nm;it.cat=$("cat").value;if(newImg)it.img=newImg}}else{if(!newImg)return;S.items.unshift({id:uid(),name:nm,cat:$("cat").value,img:newImg})}save();$("addSheet").classList.remove("open");render()};
 $("autoName").onclick=async()=>{
   const img=newImg||(S.items.find(x=>x.id===editId)||{}).img;if(!img)return;
-  let url="";try{url=localStorage.getItem("closet-ai-url")||""}catch(e){}
-  if(!url){url=(prompt("Paste your Worker address (it starts with https://)")||"").trim();if(!/^https:\/\//.test(url))return;try{localStorage.setItem("closet-ai-url",url)}catch(e){}}
+  const url="https://closet-ai.morganbusacca.workers.dev";
   const b=$("autoName"),st=$("aiStatus");b.disabled=true;st.textContent="Looking at your photo…";
   try{const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:img})});const d=await r.json();if(!r.ok||d.error)throw new Error(d.error||"Request failed");
     if(d.name)$("name").value=d.name;if(CATS.includes(d.category))$("cat").value=d.category;st.textContent="Filled in. Edit anything that looks off."}
-  catch(e){st.textContent="Couldn’t auto-name: "+e.message;if(e instanceof TypeError){try{localStorage.removeItem("closet-ai-url")}catch(_){}st.textContent+=" (check the Worker address and try again)"}}
+  catch(e){st.textContent="Couldn’t auto-name: "+e.message;if(e instanceof TypeError){st.textContent+=" (check your connection and try again)"}}
   b.disabled=false};
 $("addDel").onclick=()=>{const it=S.items.find(x=>x.id===editId);if(it&&confirm("Remove “"+it.name+"” from your closet? It will also come out of any outfits.")){S.items=S.items.filter(x=>x.id!==editId);S.outfits.forEach(o=>o.items=o.items.filter(x=>x!==editId));save();$("addSheet").classList.remove("open");render()}};
 $("outSave").onclick=()=>{if(!picked.length)return;const nm=$("oname").value.trim();if(editOutId){const o=S.outfits.find(x=>x.id===editOutId);if(o){o.name=nm||o.name;o.items=picked.slice()}}else S.outfits.unshift({id:uid(),name:nm||"Outfit "+(S.outfits.length+1),items:picked.slice()});save();$("outSheet").classList.remove("open");tab="outfits";render()};
