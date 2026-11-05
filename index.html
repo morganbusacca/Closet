@@ -38,6 +38,8 @@ h1{font-size:28px;margin:8px 0 2px;letter-spacing:-.5px}
 .badge{position:absolute;top:6px;right:6px;background:var(--accent);color:var(--accent-text);border-radius:99px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font:600 12px system-ui}
 .empty{text-align:center;color:var(--muted);padding:48px 16px;font-family:system-ui,sans-serif;font-size:14px;line-height:1.5}
 .fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--accent);color:var(--accent-text);border:0;border-radius:99px;padding:14px 20px;font:600 15px system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer}
+.fab2{right:auto;left:16px;background:var(--surface);color:var(--text);border:1px solid var(--line)}
+label.chk{display:flex;gap:8px;align-items:center;text-transform:none;font:14px system-ui,sans-serif;color:var(--text);margin-top:14px;letter-spacing:0}
 .sheet{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center;z-index:20}
 .sheet.open{display:flex}
 .panel{background:var(--bg);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px))}
@@ -67,6 +69,7 @@ input[type=text],select{width:100%;padding:11px;border:1px solid var(--line);bor
   <div class="tabs"><button id="tCloset" class="on">Closet</button><button id="tOutfits">Outfits</button></div>
   <div id="view"></div>
 </div>
+<button class="fab fab2" id="fabMany">Add many</button>
 <button class="fab" id="fab">+ Add item</button>
 
 <div class="sheet" id="addSheet"><div class="panel">
@@ -87,13 +90,29 @@ input[type=text],select{width:100%;padding:11px;border:1px solid var(--line);bor
   <div class="row"><button class="btn" id="outCancel">Cancel</button><button class="btn pri" id="outSave" disabled>Save outfit</button></div>
 </div></div>
 
+<div class="sheet" id="manySheet"><div class="panel">
+  <h2>Add many pieces</h2>
+  <p class="hint">Pick lots of photos at once. Each photo becomes one piece.</p>
+  <label for="bulkCat">Default category</label><select id="bulkCat"></select>
+  <label class="chk"><input type="checkbox" id="bulkAuto" checked> Auto-name with AI</label>
+  <label class="btn pri" id="bulkChoose" style="display:block;text-align:center;margin-top:16px;cursor:pointer">Choose photos<input id="bulkFile" type="file" accept="image/*" multiple hidden></label>
+  <p class="hint" id="bulkStatus"></p>
+  <div class="row"><button class="btn" id="bulkDone">Close</button></div>
+</div></div>
+
 <script>
 const CATS=["Tops","Bottoms","Dresses","Outerwear","Shoes","Accessories"];
 const KEY="closet-v1";
 let S={items:[],outfits:[]},tab="closet",filter="All",pickFilter="All",picked=[],newImg=null,editId=null,editOutId=null;
 const $=id=>document.getElementById(id);
-function load(){try{const r=localStorage.getItem(KEY);if(r){const d=JSON.parse(r);S.items=d.items||[];S.outfits=d.outfits||[]}}catch(e){}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert("Storage is full. Try removing a few items.")}}
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open("closet-db",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function dbGet(k){const db=await idb();return new Promise((res,rej)=>{const q=db.transaction("kv").objectStore("kv").get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}
+async function dbSet(k,v){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction("kv","readwrite");t.objectStore("kv").put(v,k);t.oncomplete=()=>res();t.onerror=()=>rej(t.error)})}
+async function load(){
+  try{const d=await dbGet("state");if(d){S.items=d.items||[];S.outfits=d.outfits||[];return}}catch(e){}
+  try{const r=localStorage.getItem(KEY);if(r){const d=JSON.parse(r);S.items=d.items||[];S.outfits=d.outfits||[];save()}}catch(e){}
+}
+function save(){dbSet("state",S).catch(()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert("Couldn’t save. Your phone may be low on storage.")}})}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 function resize(file){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>{const im=new Image();im.onload=()=>{const m=420,k=Math.min(1,m/Math.max(im.width,im.height));const c=document.createElement("canvas");c.width=im.width*k;c.height=im.height*k;c.getContext("2d").drawImage(im,0,0,c.width,c.height);res(c.toDataURL("image/jpeg",.78))};im.onerror=rej;im.src=fr.result};fr.onerror=rej;fr.readAsDataURL(file)})}
 function chips(el,cur,fn){el.innerHTML="";["All",...CATS].forEach(c=>{const b=document.createElement("button");b.className="chip"+(c===cur?" on":"");b.textContent=c;b.onclick=()=>fn(c);el.appendChild(b)})}
@@ -101,7 +120,7 @@ function itemCard(it,sel,idx,onclick){const b=document.createElement("button");b
 function render(){
   $("count").textContent=S.items.length+" pieces · "+S.outfits.length+" outfits";
   $("tCloset").className=tab==="closet"?"on":"";$("tOutfits").className=tab==="outfits"?"on":"";
-  $("fab").textContent=tab==="closet"?"+ Add item":"+ New outfit";
+  $("fab").textContent=tab==="closet"?"+ Add item":"+ New outfit";$("fabMany").hidden=tab!=="closet";
   const v=$("view");v.innerHTML="";
   if(tab==="closet"){
     const ch=document.createElement("div");ch.className="chips";v.appendChild(ch);chips(ch,filter,c=>{filter=c;render()});
@@ -129,7 +148,7 @@ function renderPick(){
   list.forEach(it=>{const k=picked.indexOf(it.id);g.appendChild(itemCard(it,k>=0,k+1,()=>{if(k>=0)picked.splice(k,1);else picked.push(it.id);renderPick()}))});
   $("outSave").disabled=!picked.length;
 }
-CATS.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c;$("cat").appendChild(o)});
+["cat","bulkCat"].forEach(id=>CATS.forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c;$(id).appendChild(o)}));
 $("tCloset").onclick=()=>{tab="closet";render()};
 $("tOutfits").onclick=()=>{tab="outfits";render()};
 $("fab").onclick=()=>tab==="closet"?openAdd():openOutfit();
@@ -146,7 +165,29 @@ $("autoName").onclick=async()=>{
   b.disabled=false};
 $("addDel").onclick=()=>{const it=S.items.find(x=>x.id===editId);if(it&&confirm("Remove “"+it.name+"” from your closet? It will also come out of any outfits.")){S.items=S.items.filter(x=>x.id!==editId);S.outfits.forEach(o=>o.items=o.items.filter(x=>x!==editId));save();$("addSheet").classList.remove("open");render()}};
 $("outSave").onclick=()=>{if(!picked.length)return;const nm=$("oname").value.trim();if(editOutId){const o=S.outfits.find(x=>x.id===editOutId);if(o){o.name=nm||o.name;o.items=picked.slice()}}else S.outfits.unshift({id:uid(),name:nm||"Outfit "+(S.outfits.length+1),items:picked.slice()});save();$("outSheet").classList.remove("open");tab="outfits";render()};
-load();bindFile();render();
+const AI_URL="https://closet-ai.morganbusacca.workers.dev";
+let bulkBusy=false;
+async function bulkAdd(files){
+  if(bulkBusy)return;bulkBusy=true;
+  const st=$("bulkStatus"),auto=$("bulkAuto").checked,cat0=$("bulkCat").value;
+  let ok=0,named=0,fail=0;
+  for(let i=0;i<files.length;i++){
+    st.textContent="Adding "+(i+1)+" of "+files.length+"… keep this screen open";
+    try{
+      const img=await resize(files[i]);let name="Untitled piece",cat=cat0;
+      if(auto){try{const r=await fetch(AI_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:img})});const d=await r.json();if(r.ok&&!d.error){if(d.name){name=d.name;named++}if(CATS.includes(d.category))cat=d.category}}catch(e){}}
+      S.items.unshift({id:uid(),name,cat,img});ok++;
+      if(ok%4===0){save();render()}
+    }catch(e){fail++}
+  }
+  save();render();bulkBusy=false;
+  st.textContent="Added "+ok+" piece"+(ok===1?"":"s")+(auto?" ("+named+" auto-named)":"")+(fail?", "+fail+" couldn’t be read":"")+". Tap any piece to rename or fix it.";
+}
+$("fabMany").onclick=()=>{if(!bulkBusy)$("bulkStatus").textContent="";$("manySheet").classList.add("open")};
+$("bulkDone").onclick=()=>$("manySheet").classList.remove("open");
+$("bulkFile").onchange=async e=>{const fs=[...e.target.files];e.target.value="";if(fs.length)await bulkAdd(fs)};
+bindFile();load().then(render);
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("./sw.js").catch(()=>{})})}
 </script>
 </body>

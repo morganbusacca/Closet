@@ -1,4 +1,4 @@
-const CACHE = "closet-shell-v4";
+const CACHE = "closet-shell-v5";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
