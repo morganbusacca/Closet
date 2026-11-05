@@ -72,7 +72,7 @@ input[type=text],select{width:100%;padding:11px;border:1px solid var(--line);bor
 <div class="sheet" id="addSheet"><div class="panel">
   <h2 id="addTitle">Add to closet</h2>
   <label class="drop" id="drop"><span id="dropTxt">Tap to add a photo</span><input id="file" type="file" accept="image/*" hidden></label>
-  <p class="hint" id="dropHint" hidden>Tap the photo to replace it.</p><label for="name">Name</label><input id="name" type="text" placeholder="e.g. Black wide-leg trousers" maxlength="60">
+  <p class="hint" id="dropHint" hidden>Tap the photo to replace it.</p><button class="btn" id="autoName" hidden style="width:100%;margin-top:10px">✨ Auto-name from photo</button><p class="hint" id="aiStatus"></p><label for="name">Name</label><input id="name" type="text" placeholder="e.g. Black wide-leg trousers" maxlength="60">
   <label for="cat">Category</label><select id="cat"></select>
   <div class="row"><button class="btn del" id="addDel" hidden>Delete</button><button class="btn" id="addCancel">Cancel</button><button class="btn pri" id="addSave" disabled>Save item</button></div>
 </div></div>
@@ -114,8 +114,9 @@ function render(){
     S.outfits.forEach(o=>{const d=document.createElement("div");d.className="outfit";const h=document.createElement("h3");const s=document.createElement("span");s.textContent=o.name;const x=document.createElement("button");x.textContent="Delete";x.onclick=()=>{if(confirm("Delete this outfit?")){S.outfits=S.outfits.filter(z=>z.id!==o.id);save();render()}};const ed=document.createElement("button");ed.textContent="Edit";ed.onclick=()=>openOutfit(o);const bt=document.createElement("div");bt.append(ed,x);h.append(s,bt);const st=document.createElement("div");st.className="strip";st.style.minHeight="0";o.items.map(id=>S.items.find(i=>i.id===id)).filter(Boolean).forEach(it=>{const im=document.createElement("img");im.src=it.img;im.alt=it.name;st.appendChild(im)});d.append(h,st);v.appendChild(d)});
   }
 }
-function openAdd(it){editId=it?it.id:null;newImg=null;$("addTitle").textContent=it?"Edit item":"Add to closet";$("name").value=it?it.name:"";$("drop").innerHTML=it?'<img alt="Photo" src=""><input id="file" type="file" accept="image/*" hidden>':'<span id="dropTxt">Tap to add a photo</span><input id="file" type="file" accept="image/*" hidden>';if(it)$("drop").querySelector("img").src=it.img;bindFile();$("cat").value=it?it.cat:(CATS.includes(filter)?filter:CATS[0]);$("addSave").disabled=!it;$("addSave").textContent=it?"Save changes":"Save item";$("addDel").hidden=!it;$("dropHint").hidden=!it;$("addSheet").classList.add("open")}
-function bindFile(){$("file").onchange=async e=>{const f=e.target.files[0];if(!f)return;try{newImg=await resize(f);const im=document.createElement("img");im.src=newImg;im.alt="Preview";const ex=$("drop").querySelector("img");if(ex)ex.src=newImg;else{const t=$("dropTxt");if(t)t.remove();$("drop").insertBefore(im,$("drop").firstChild)}$("addSave").disabled=false}catch(err){alert("Couldn’t read that image.")}}}
+function openAdd(it){editId=it?it.id:null;newImg=null;$("addTitle").textContent=it?"Edit item":"Add to closet";$("name").value=it?it.name:"";$("drop").innerHTML=it?'<img alt="Photo" src=""><input id="file" type="file" accept="image/*" hidden>':'<span id="dropTxt">Tap to add a photo</span><input id="file" type="file" accept="image/*" hidden>';if(it)$("drop").querySelector("img").src=it.img;bindFile();$("cat").value=it?it.cat:(CATS.includes(filter)?filter:CATS[0]);$("addSave").disabled=!it;$("addSave").textContent=it?"Save changes":"Save item";$("addDel").hidden=!it;setAuto(!!it);$("dropHint").hidden=!it;$("addSheet").classList.add("open")}
+function setAuto(show){$("autoName").hidden=!show;$("aiStatus").textContent=""}
+function bindFile(){$("file").onchange=async e=>{const f=e.target.files[0];if(!f)return;try{newImg=await resize(f);const im=document.createElement("img");im.src=newImg;im.alt="Preview";const ex=$("drop").querySelector("img");if(ex)ex.src=newImg;else{const t=$("dropTxt");if(t)t.remove();$("drop").insertBefore(im,$("drop").firstChild)}$("addSave").disabled=false;setAuto(true)}catch(err){alert("Couldn’t read that image.")}}}
 function openOutfit(o){if(!S.items.length){alert("Add some pieces to your closet first.");return}editOutId=o?o.id:null;picked=o?o.items.filter(id=>S.items.some(i=>i.id===id)):[];pickFilter="All";$("oname").value=o?o.name:"";$("outTitle").textContent=o?"Edit outfit":"New outfit";$("outSave").textContent=o?"Save changes":"Save outfit";$("outSheet").classList.add("open");renderPick()}
 function renderPick(){
   const st=$("strip");st.innerHTML="";
@@ -135,6 +136,15 @@ $("fab").onclick=()=>tab==="closet"?openAdd():openOutfit();
 $("addCancel").onclick=()=>$("addSheet").classList.remove("open");
 $("outCancel").onclick=()=>$("outSheet").classList.remove("open");
 $("addSave").onclick=()=>{const nm=$("name").value.trim()||"Untitled piece";if(editId){const it=S.items.find(x=>x.id===editId);if(it){it.name=nm;it.cat=$("cat").value;if(newImg)it.img=newImg}}else{if(!newImg)return;S.items.unshift({id:uid(),name:nm,cat:$("cat").value,img:newImg})}save();$("addSheet").classList.remove("open");render()};
+$("autoName").onclick=async()=>{
+  const img=newImg||(S.items.find(x=>x.id===editId)||{}).img;if(!img)return;
+  let url="";try{url=localStorage.getItem("closet-ai-url")||""}catch(e){}
+  if(!url){url=(prompt("Paste your Worker address (it starts with https://)")||"").trim();if(!/^https:\/\//.test(url))return;try{localStorage.setItem("closet-ai-url",url)}catch(e){}}
+  const b=$("autoName"),st=$("aiStatus");b.disabled=true;st.textContent="Looking at your photo…";
+  try{const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:img})});const d=await r.json();if(!r.ok||d.error)throw new Error(d.error||"Request failed");
+    if(d.name)$("name").value=d.name;if(CATS.includes(d.category))$("cat").value=d.category;st.textContent="Filled in. Edit anything that looks off."}
+  catch(e){st.textContent="Couldn’t auto-name: "+e.message;if(e instanceof TypeError){try{localStorage.removeItem("closet-ai-url")}catch(_){}st.textContent+=" (check the Worker address and try again)"}}
+  b.disabled=false};
 $("addDel").onclick=()=>{const it=S.items.find(x=>x.id===editId);if(it&&confirm("Remove “"+it.name+"” from your closet? It will also come out of any outfits.")){S.items=S.items.filter(x=>x.id!==editId);S.outfits.forEach(o=>o.items=o.items.filter(x=>x!==editId));save();$("addSheet").classList.remove("open");render()}};
 $("outSave").onclick=()=>{if(!picked.length)return;const nm=$("oname").value.trim();if(editOutId){const o=S.outfits.find(x=>x.id===editOutId);if(o){o.name=nm||o.name;o.items=picked.slice()}}else S.outfits.unshift({id:uid(),name:nm||"Outfit "+(S.outfits.length+1),items:picked.slice()});save();$("outSheet").classList.remove("open");tab="outfits";render()};
 load();bindFile();render();
